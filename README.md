@@ -5,7 +5,6 @@ This project builds and evaluates supervised machine learning models to classify
 
 # Data
 - Source: BRFSS (2015) public-use data
-- Note: Raw data are not included in this repository. Please download from the CDC BRFSS website and place files in the location described below.
 
 # Methods
 - Data cleaning and preprocessing
