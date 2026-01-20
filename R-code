@@ -1,0 +1,132 @@
+# BSTT 527 Final Project 
+setwd("C:/Users/Andreja/Downloads")
+stroke <- read.csv("stroke_data.csv")   
+set.seed(100)
+# Factor Variables
+stroke <- stroke %>%
+mutate(
+age = ifelse(age < 18, NA, age), stroke = factor(stroke, levels = c(0,1), labels = c("No","Yes")),
+sex = factor(sex, levels = c(0,1), labels = c("Female","Male")),
+hypertension = factor(hypertension, levels = c(0,1), labels = c("No","Yes")),
+heart_disease = factor(heart_disease, levels = c(0,1), labels = c("No","Yes")),
+ever_married = factor(ever_married, levels = c(0,1), labels = c("No","Yes")),
+Residence_type = factor(Residence_type),
+smoking_status = factor(smoking_status, levels = c(0,1), labels = c("No","Yes")),
+work_type = as.character(work_type),
+work_type = ifelse(work_type %in% c("0","1"), "Other", work_type),work_type = factor(work_type)
+)
+table(stroke$work_type)
+prop.table(table(stroke$stroke))
+# Train/Test Split
+idx <- createDataPartition(stroke$stroke, p = 0.7, list = FALSE)
+train <- stroke[idx, ]
+test  <- stroke[-idx, ]
+train_clean <- na.omit(train)
+test_clean  <- na.omit(test)
+prop.table(table(test_clean$stroke))
+# Model Evaluation 
+eval_model <- function(prob_yes, truth_yes, cutoff = 0.5) {
+pred_class <- factor(ifelse(prob_yes >= cutoff, "Yes", "No"),levels = c("No","Yes"))
+cm <- confusionMatrix(pred_class, truth_yes, positive = "Yes")
+roc_obj <- roc(truth_yes, prob_yes, levels = c("No","Yes"))
+list(cm = cm, auc = as.numeric(auc(roc_obj)), roc = roc_obj)
+}
+# K-Cross Validation 
+ctrl_fast <- trainControl(
+method = "cv",
+number = 3,
+classProbs = TRUE,
+summaryFunction = twoClassSummary,
+verboseIter = TRUE,
+allowParallel = FALSE
+)
+# Total N
+n_total <- nrow(stroke)
+table(stroke$stroke)
+# Train/test sizes
+n_train <- nrow(train_clean)
+n_test  <- nrow(test_clean)
+table(train_clean$stroke)
+table(test_clean$stroke)
+# Method 1: Logistic Regression
+log_fit  <- glm(stroke ~ ., data = train_clean, family = binomial)
+log_prob <- predict(log_fit, newdata = test_clean, type = "response")
+log_res <- eval_model(log_prob, test_clean$stroke)
+log_res$cm
+log_res$auc
+plot(log_res$roc, main = "Logistic Regression ROC — Stroke")
+
+# Method 3: Boosting 
+gbm_grid <- expand.grid(
+n.trees = c(50, 100),
+interaction.depth = c(1, 2),
+shrinkage = 0.05,
+n.minobsinnode = 10)
+gbm_fit <- train(
+stroke ~ .,
+data = train_clean,
+method = "gbm",
+trControl = ctrl_fast,
+metric = "ROC",
+tuneGrid = gbm_grid,
+verbose = FALSE
+)
+gbm_prob <- predict(gbm_fit, test_clean, type = "prob")[, "Yes"]
+gbm_res  <- eval_model(gbm_prob, test_clean$stroke)
+gbm_fit
+gbm_res$cm
+gbm_res$auc
+plot(gbm_res$roc, main = "Boosting ROC — Stroke")
+gbm_vi <- varImp(gbm_fit, scale = TRUE)
+gbm_vi
+plot(gbm_vi, main = "Variable Importance – Boosting")
+# Method 4: Naive Bayes
+nb_fit <- train(
+stroke ~ .,
+data = train_clean,
+method = "naive_bayes",
+trControl = ctrl_fast,
+metric = "ROC"
+)
+nb_prob <- predict(nb_fit, test_clean, type = "prob")[, "Yes"]
+nb_res  <- eval_model(nb_prob, test_clean$stroke)
+nb_fit
+nb_res$cm
+nb_res$auc
+plot(nb_res$roc, main = "Naive Bayes ROC — Stroke")
+# Method 5: Linear SVM
+svm_lin_fit <- train(
+stroke ~ .,
+data = train_clean,
+method = "svmLinear",
+metric = "ROC",
+trControl = ctrl_fast,
+preProcess = c("center", "scale"),
+tuneLength = 5
+)
+svm_lin_prob <- predict(svm_lin_fit, test_clean, type = "prob")[, "Yes"]
+svm_lin_res  <- eval_model(svm_lin_prob, test_clean$stroke)
+svm_lin_fit
+svm_lin_res$cm
+svm_lin_res$auc
+plot(svm_lin_res$roc, main = "Linear SVM ROC — Stroke")
+# ROC plot
+plot(log_res$roc,
+col = "black",
+lwd = 2,
+main = "ROC Curves for Stroke History Prediction")
+lines(lda_res$roc,  col = "blue",   lwd = 2)
+lines(gbm_res$roc,  col = "red",    lwd = 2)
+lines(nb_res$roc,   col = "darkgreen", lwd = 2)
+lines(svm_lin_res$roc, col = "purple", lwd = 2)
+abline(a = 0, b = 1, lty = 2)  
+legend("bottomright",legend = c(
+paste0("Logistic (AUC = ", round(log_res$auc, 3), ")"),
+paste0("LDA (AUC = ", round(lda_res$auc, 3), ")"),
+paste0("Boosting (GBM) (AUC = ", round(gbm_res$auc, 3), ")"),
+paste0("Naive Bayes (AUC = ", round(nb_res$auc, 3), ")"),
+paste0("Linear SVM (AUC = ", round(svm_lin_res$auc, 3), ")")
+),
+col = c("black", "blue", "red", "darkgreen", "purple"),
+lwd = 2,
+cex = 0.8)
