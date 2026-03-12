@@ -1,5 +1,4 @@
-# BSTT 527 Final Project 
-setwd("C:/Users/Andreja/Downloads")
+
 stroke <- read.csv("stroke_data.csv")   
 set.seed(100)
 # Factor Variables
